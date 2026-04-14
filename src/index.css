@@ -1,0 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --color-app-bg: #FDFCF0;
+  --color-app-primary: #4A90E2;
+  --color-app-accent: #FFD200;
+  --color-app-success: #7ED321;
+  --color-app-dark: #333333;
+  --color-app-light: #888888;
+  --color-app-badge: #FFF1B8;
+}
+
+@layer base {
+  body {
+    @apply bg-app-bg text-app-dark antialiased;
+  }
+}
+
+@layer components {
+  .quiz-card {
+    @apply bg-white rounded-[24px] shadow-[0_10px_30px_rgba(0,0,0,0.03)] border-none;
+  }
+}
+
