@@ -10,3 +10,15 @@ export function playSound(type: keyof typeof AUDIO_URLS) {
   audio.volume = 0.4;
   audio.play().catch(e => console.log('Audio play blocked', e));
 }
+
+export function speakText(text: string) {
+  if ('speechSynthesis' in window) {
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'fr-FR';
+    utterance.rate = 0.8; // Slightly slower for children
+    window.speechSynthesis.speak(utterance);
+  }
+}

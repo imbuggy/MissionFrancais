@@ -26,14 +26,18 @@ import {
   BarChart3,
   ChevronLeft,
   Home,
-  X
+  X,
+  Volume2,
+  Headphones,
+  Keyboard
 } from 'lucide-react';
 import { QUIZ_QUESTIONS } from './constants';
-import { QuizState, VerbCategory, QuizMode, Question, MasteryItem } from './types';
-import { generateNumberQuestions } from './utils/numbers';
-import { playSound } from './utils/audio';
+import { QuizState, VerbCategory, QuizMode, Question, MasteryItem, Tense } from './types';
+import { generateNumberQuestions, numberToFrench } from './utils/numbers';
+import { playSound, speakText } from './utils/audio';
 
 const CATEGORIES: VerbCategory[] = ['être', 'avoir', 'aller', 'faire', 'dire', 'venir', '1er groupe'];
+const TENSES: Tense[] = ['présent', 'passé composé', 'futur proche'];
 const MASTERY_THRESHOLD = 3;
 
 export default function App() {
@@ -49,6 +53,7 @@ export default function App() {
       settings: {
         mode: 'conjugaison',
         selectedCategories: [...CATEGORIES],
+        selectedTenses: [...TENSES],
         numberRange: '1-digit',
       },
       startTime: null,
@@ -60,6 +65,7 @@ export default function App() {
   });
 
   const [generatedQuestions, setGeneratedQuestions] = useState<Question[]>([]);
+  const [inputValue, setInputValue] = useState('');
 
   useEffect(() => {
     localStorage.setItem('mastery', JSON.stringify(state.mastery));
@@ -69,7 +75,9 @@ export default function App() {
     let questions: Question[] = [];
     if (state.settings.mode === 'conjugaison') {
       questions = QUIZ_QUESTIONS.filter(q => 
-        q.type === 'conjugaison' && q.category && state.settings.selectedCategories.includes(q.category)
+        q.type === 'conjugaison' && 
+        q.category && state.settings.selectedCategories.includes(q.category) &&
+        q.tense && state.settings.selectedTenses.includes(q.tense)
       );
     } else if (state.settings.mode === 'grammaire') {
       questions = QUIZ_QUESTIONS.filter(q => q.type === 'grammaire');
@@ -77,7 +85,7 @@ export default function App() {
       questions = generatedQuestions;
     }
     return questions.sort(() => Math.random() - 0.5);
-  }, [state.settings.mode, state.settings.selectedCategories, generatedQuestions]);
+  }, [state.settings.mode, state.settings.selectedCategories, state.settings.selectedTenses, generatedQuestions]);
 
   const currentQuestion = useMemo(() => {
     // If we have failed questions to repeat, prioritize them occasionally or at the end
@@ -133,6 +141,20 @@ export default function App() {
     });
   };
 
+  const toggleTense = (tense: Tense) => {
+    setState(prev => {
+      const current = prev.settings.selectedTenses;
+      const next = current.includes(tense)
+        ? current.filter(t => t !== tense)
+        : [...current, tense];
+      if (next.length === 0) return prev;
+      return {
+        ...prev,
+        settings: { ...prev.settings, selectedTenses: next }
+      };
+    });
+  };
+
   const setNumberRange = (range: '1-digit' | '2-digits' | '3-digits') => {
     setState(prev => ({
       ...prev,
@@ -142,8 +164,12 @@ export default function App() {
 
   const handleStart = () => {
     playSound('start');
-    if (state.settings.mode === 'nombres') {
-      setGeneratedQuestions(generateNumberQuestions(state.settings.numberRange));
+    const questions = (state.settings.mode === 'nombres' || state.settings.mode === 'dictee-nombres')
+      ? generateNumberQuestions(state.settings.mode, state.settings.numberRange)
+      : [];
+    
+    if (questions.length > 0) {
+      setGeneratedQuestions(questions);
     }
     
     setState(prev => ({
@@ -158,13 +184,24 @@ export default function App() {
       lastAnswerCorrect: null,
       failedQuestionIds: [],
     }));
+    setInputValue('');
     setCurrentTime(0);
+
+    // Initial speech if in dictation mode
+    if (state.settings.mode === 'dictee-nombres' && questions.length > 0) {
+      setTimeout(() => {
+        speakText(numberToFrench(questions[0].numberValue!));
+      }, 500);
+    }
   };
 
   const handleAnswer = (selectedAnswer: string) => {
     if (state.status === 'feedback') return;
 
-    const isCorrect = selectedAnswer === currentQuestion.correctAnswer;
+    const isCorrect = state.settings.mode === 'dictee-nombres'
+      ? selectedAnswer === currentQuestion.numberValue?.toString()
+      : selectedAnswer === currentQuestion.correctAnswer;
+
     if (isCorrect) playSound('correct');
     else playSound('incorrect');
 
@@ -219,6 +256,13 @@ export default function App() {
           endTime: Date.now(),
         };
       } else {
+        // Speech for next question if in dictation mode
+        if (prev.settings.mode === 'dictee-nombres') {
+          const nextQuestion = activeQuestions[nextIndex];
+          if (nextQuestion && nextQuestion.numberValue !== undefined) {
+             speakText(numberToFrench(nextQuestion.numberValue));
+          }
+        }
         return {
           ...prev,
           currentQuestionIndex: nextIndex,
@@ -227,6 +271,7 @@ export default function App() {
         };
       }
     });
+    setInputValue('');
   };
 
   const handleRestart = () => {
@@ -379,6 +424,15 @@ export default function App() {
                   <h3 className="text-lg font-bold text-app-dark">Nombres</h3>
                 </button>
                 <button
+                  onClick={() => handleSelectMode('dictee-nombres')}
+                  className="p-5 bg-white border-2 border-slate-100 rounded-2xl hover:border-app-primary hover:bg-blue-50 transition-all text-center space-y-2 group"
+                >
+                  <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center mx-auto text-emerald-600 group-hover:scale-110 transition-transform">
+                    <Headphones size={20} />
+                  </div>
+                  <h3 className="text-lg font-bold text-app-dark">Dictée</h3>
+                </button>
+                <button
                   onClick={() => handleSelectMode('grammaire')}
                   className="p-5 bg-white border-2 border-slate-100 rounded-2xl hover:border-app-primary hover:bg-blue-50 transition-all text-center space-y-2 group"
                 >
@@ -410,7 +464,8 @@ export default function App() {
                   <h2 className="text-2xl font-bold text-app-dark">Réglages</h2>
                   <p className="text-app-light text-xs font-medium">
                     {state.settings.mode === 'conjugaison' ? 'Choisis les verbes :' : 
-                     state.settings.mode === 'grammaire' ? 'Prêt pour la grammaire ?' : 'Choisis la difficulté :'}
+                     state.settings.mode === 'grammaire' ? 'Prêt pour la grammaire ?' : 
+                     state.settings.mode === 'dictee-nombres' ? 'Écoute et écris les nombres :' : 'Choisis la difficulté :'}
                   </p>
                 </div>
                 <button 
@@ -422,23 +477,47 @@ export default function App() {
               </div>
 
               {state.settings.mode === 'conjugaison' ? (
-                <div className="grid grid-cols-2 gap-3 max-h-[40vh] overflow-y-auto p-1 custom-scrollbar">
-                  {CATEGORIES.map(cat => (
-                    <button
-                      key={cat}
-                      onClick={() => toggleCategory(cat)}
-                      className={`p-3 rounded-xl border-2 transition-all flex items-center justify-between text-sm ${
-                        state.settings.selectedCategories.includes(cat)
-                          ? 'border-app-primary bg-blue-50 text-app-primary'
-                          : 'border-slate-100 bg-white text-slate-400'
-                      }`}
-                    >
-                      <span className="font-bold capitalize">{cat}</span>
-                      {state.settings.selectedCategories.includes(cat) && <Check size={16} />}
-                    </button>
-                  ))}
+                <div className="space-y-6">
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-bold text-app-light uppercase tracking-wider px-1">Temps</h3>
+                    <div className="grid grid-cols-3 gap-2">
+                      {TENSES.map(tense => (
+                        <button
+                          key={tense}
+                          onClick={() => toggleTense(tense)}
+                          className={`p-2 rounded-xl border-2 transition-all text-[10px] font-bold ${
+                            state.settings.selectedTenses.includes(tense)
+                              ? 'border-app-primary bg-blue-50 text-app-primary'
+                              : 'border-slate-100 bg-white text-slate-400'
+                          }`}
+                        >
+                          {tense.charAt(0).toUpperCase() + tense.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-bold text-app-light uppercase tracking-wider px-1">Verbes</h3>
+                    <div className="grid grid-cols-2 gap-3 max-h-[30vh] overflow-y-auto p-1 custom-scrollbar">
+                      {CATEGORIES.map(cat => (
+                        <button
+                          key={cat}
+                          onClick={() => toggleCategory(cat)}
+                          className={`p-3 rounded-xl border-2 transition-all flex items-center justify-between text-sm ${
+                            state.settings.selectedCategories.includes(cat)
+                              ? 'border-app-primary bg-blue-50 text-app-primary'
+                              : 'border-slate-100 bg-white text-slate-400'
+                          }`}
+                        >
+                          <span className="font-bold capitalize">{cat}</span>
+                          {state.settings.selectedCategories.includes(cat) && <Check size={16} />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              ) : state.settings.mode === 'nombres' ? (
+              ) : (state.settings.mode === 'nombres' || state.settings.mode === 'dictee-nombres') ? (
                 <div className="grid grid-cols-1 gap-3">
                   {(['1-digit', '2-digits', '3-digits'] as const).map(range => (
                     <button
@@ -461,7 +540,7 @@ export default function App() {
                 </div>
               ) : (
                 <div className="p-8 bg-purple-50 rounded-2xl text-center">
-                  <p className="text-purple-700 font-medium">Genre (Masculin/Féminin) et Nombre (Singulier/Pluriel)</p>
+                  <p className="text-purple-700 font-medium">Genre, Nombre, Nature des mots, Sujet/Verbe et Ponctuation</p>
                 </div>
               )}
 
@@ -490,62 +569,125 @@ export default function App() {
                     ? `${currentQuestion.verb?.toUpperCase()} (${currentQuestion.tense})`
                     : state.settings.mode === 'grammaire'
                       ? `GRAMMAIRE (${currentQuestion.grammarType})`
-                      : `NOMBRES`
+                      : state.settings.mode === 'dictee-nombres'
+                        ? `DICTÉE DE NOMBRES`
+                        : `NOMBRES`
                   }
                 </div>
                 
-                <h2 className="text-3xl md:text-5xl font-bold text-app-dark leading-tight">
-                  {state.settings.mode === 'conjugaison' ? (
-                    currentQuestion.sentence.split('___').map((part, i) => (
-                      <span key={i}>
-                        {part}
-                        {i === 0 && (
-                          <span className={`inline-block min-w-[100px] border-b-2 mx-2 transition-colors ${
-                            state.status === 'feedback' 
-                              ? state.lastAnswerCorrect 
-                                ? 'border-app-success text-app-success' 
-                                : 'border-red-500 text-red-500'
-                              : 'border-app-primary text-app-primary'
-                          }`}>
-                            {state.status === 'feedback' ? state.answers[state.answers.length - 1].selectedAnswer : '?'}
-                          </span>
+                <div className="flex flex-col items-center gap-6">
+                  <h2 className="text-3xl md:text-5xl font-bold text-app-dark leading-tight">
+                    {state.settings.mode === 'conjugaison' ? (
+                      currentQuestion.sentence.split('___').map((part, i) => (
+                        <span key={i}>
+                          {part}
+                          {i === 0 && (
+                            <span className={`inline-block min-w-[100px] border-b-2 mx-2 transition-colors ${
+                              state.status === 'feedback' 
+                                ? state.lastAnswerCorrect 
+                                  ? 'border-app-success text-app-success' 
+                                  : 'border-red-500 text-red-500'
+                                : 'border-app-primary text-app-primary'
+                            }`}>
+                              {state.status === 'feedback' ? state.answers[state.answers.length - 1].selectedAnswer : '?'}
+                            </span>
+                          )}
+                        </span>
+                      ))
+                    ) : state.settings.mode === 'nombres' ? (
+                      <div className="text-6xl font-black text-app-primary bg-slate-50 py-4 rounded-2xl border-2 border-slate-100 inline-block px-8">
+                        {currentQuestion.numberValue}
+                      </div>
+                    ) : state.settings.mode === 'dictee-nombres' ? (
+                      <div className="flex flex-col items-center gap-8">
+                        <button
+                          onClick={() => speakText(numberToFrench(currentQuestion.numberValue!))}
+                          className="w-24 h-24 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center hover:bg-emerald-200 transition-colors shadow-lg active:scale-95"
+                        >
+                          <Volume2 size={48} />
+                        </button>
+                        <div className="text-lg text-app-light font-medium italic">
+                          " Écoute bien et tape le nombre "
+                        </div>
+                      </div>
+                    ) : (
+                      currentQuestion.sentence
+                    )}
+                  </h2>
+
+                  {state.settings.mode === 'dictee-nombres' && (
+                    <div className="w-full max-w-xs space-y-4">
+                      <div className="relative">
+                        <input
+                          type="number"
+                          value={inputValue}
+                          onChange={(e) => setInputValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && inputValue && state.status !== 'feedback') {
+                              handleAnswer(inputValue);
+                            }
+                          }}
+                          disabled={state.status === 'feedback'}
+                          placeholder="Ex: 42"
+                          autoFocus
+                          className={`w-full text-center text-4xl font-black p-4 rounded-2xl border-4 transition-all outline-none ${
+                            state.status === 'feedback'
+                              ? state.lastAnswerCorrect
+                                ? 'border-app-success bg-green-50 text-app-success'
+                                : 'border-red-500 bg-red-50 text-red-500'
+                              : 'border-emerald-100 focus:border-emerald-400 bg-white text-app-dark'
+                          }`}
+                        />
+                        {state.status === 'feedback' && !state.lastAnswerCorrect && (
+                          <div className="mt-2 text-sm font-bold text-red-500">
+                            La réponse était : {currentQuestion.numberValue}
+                          </div>
                         )}
-                      </span>
-                    ))
-                  ) : state.settings.mode === 'nombres' ? (
-                    <div className="text-6xl font-black text-app-primary bg-slate-50 py-4 rounded-2xl border-2 border-slate-100 inline-block px-8">
-                      {currentQuestion.numberValue}
+                      </div>
+                      
+                      <button
+                        onClick={() => handleAnswer(inputValue)}
+                        disabled={!inputValue || state.status === 'feedback'}
+                        className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
+                          !inputValue || state.status === 'feedback'
+                            ? 'bg-slate-100 text-slate-400'
+                            : 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 active:scale-95'
+                        }`}
+                      >
+                        <Check size={20} />
+                        Valider
+                      </button>
                     </div>
-                  ) : (
-                    currentQuestion.sentence
                   )}
-                </h2>
+                </div>
               </div>
 
-              <div className={`grid grid-cols-1 gap-3 ${currentQuestion.options.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
-                {currentQuestion.options.map((option) => {
-                  const isSelected = state.status === 'feedback' && state.answers[state.answers.length - 1].selectedAnswer === option;
-                  const isCorrect = state.status === 'feedback' && currentQuestion.correctAnswer === option;
-                  return (
-                    <button
-                      key={option}
-                      disabled={state.status === 'feedback'}
-                      onClick={() => handleAnswer(option)}
-                      className={`group relative p-4 text-center border-2 rounded-xl transition-all duration-200 ${
-                        state.status === 'feedback'
-                          ? isCorrect
-                            ? 'border-app-success bg-green-50 text-app-success'
-                            : isSelected
-                              ? 'border-red-500 bg-red-50 text-red-500'
-                              : 'border-slate-100 bg-white opacity-50'
-                          : 'bg-[#F8F9FA] border-[#EEEEEE] active:scale-[0.96]'
-                      }`}
-                    >
-                      <span className="text-xl font-bold">{option}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              {state.settings.mode !== 'dictee-nombres' && (
+                <div className={`grid grid-cols-1 gap-3 ${currentQuestion.options.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+                  {currentQuestion.options.map((option) => {
+                    const isSelected = state.status === 'feedback' && state.answers[state.answers.length - 1].selectedAnswer === option;
+                    const isCorrect = state.status === 'feedback' && currentQuestion.correctAnswer === option;
+                    return (
+                      <button
+                        key={option}
+                        disabled={state.status === 'feedback'}
+                        onClick={() => handleAnswer(option)}
+                        className={`group relative p-4 text-center border-2 rounded-xl transition-all duration-200 ${
+                          state.status === 'feedback'
+                            ? isCorrect
+                              ? 'border-app-success bg-green-50 text-app-success'
+                              : isSelected
+                                ? 'border-red-500 bg-red-50 text-red-500'
+                                : 'border-slate-100 bg-white opacity-50'
+                            : 'bg-[#F8F9FA] border-[#EEEEEE] active:scale-[0.96]'
+                        }`}
+                      >
+                        <span className="text-xl font-bold">{option}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </motion.div>
           )}
 

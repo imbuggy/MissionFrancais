@@ -2,7 +2,7 @@ export type Tense = 'présent' | 'passé composé' | 'futur proche';
 
 export type VerbCategory = 'être' | 'avoir' | 'aller' | 'faire' | 'dire' | 'venir' | '1er groupe';
 
-export type QuizMode = 'conjugaison' | 'nombres' | 'grammaire';
+export type QuizMode = 'conjugaison' | 'nombres' | 'grammaire' | 'dictee-nombres';
 
 export interface Question {
   id: string;
@@ -15,12 +15,13 @@ export interface Question {
   correctAnswer: string;
   options: string[];
   numberValue?: number;
-  grammarType?: 'genre' | 'nombre';
+  grammarType?: 'genre' | 'nombre' | 'nature' | 'ponctuation' | 'sujet-verbe';
 }
 
 export interface QuizSettings {
   mode: QuizMode;
   selectedCategories: VerbCategory[];
+  selectedTenses: Tense[];
   numberRange: '1-digit' | '2-digits' | '3-digits';
 }
 

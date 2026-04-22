@@ -1,4 +1,4 @@
-import { Question } from '../types';
+import { Question, QuizMode } from '../types';
 
 const UNITS = ['', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf'];
 const TEENS = ['dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize', 'dix-sept', 'dix-huit', 'dix-neuf'];
@@ -45,7 +45,7 @@ export function numberToFrench(n: number): string {
   return n.toString();
 }
 
-export function generateNumberQuestions(range: '1-digit' | '2-digits' | '3-digits', count: number = 10): Question[] {
+export function generateNumberQuestions(mode: QuizMode, range: '1-digit' | '2-digits' | '3-digits', count: number = 10): Question[] {
   const questions: Question[] = [];
   const usedNumbers = new Set<number>();
   
@@ -73,7 +73,7 @@ export function generateNumberQuestions(range: '1-digit' | '2-digits' | '3-digit
     
     questions.push({
       id: `num-${n}-${Date.now()}`,
-      type: 'nombres',
+      type: mode,
       sentence: `Comment écrit-on le nombre ${n} ?`,
       correctAnswer: correct,
       options: options.sort(() => Math.random() - 0.5),
